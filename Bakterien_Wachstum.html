@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bakterien-Labor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* Layout: Labor-Oberfläche – links die Ansicht (Mikroskop / Nährlösung), rechts Messwerte, darunter das Diagramm. Einheitlich hell. */
+:root {
+  --bg: #F3F7F2;
+  --panel: #FFFFFF;
+  --ink: #1F2A2E;
+  --muted: #5B666A;
+  --line: #DDE6DE;
+  --green: #2F8F44;
+  --green-soft: #E3F2E5;
+  --orange: #E8590C;
+  --orange-soft: #FDEBD8;
+  --blue: #2B7BD3;
+  --blue-soft: #E3F0FB;
+  --purple: #8E2C8E;
+  --scope: #0F1A17;
+  --font-display: "Fredoka", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.45; }
+button, input, select { font: inherit; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; line-height: 1.15; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.view .intro { font-size: 15px; }
+
+header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand canvas { width: 64px; height: 40px; }
+.brand h1 { font-size: 30px; color: var(--green); }
+.brand p { margin: 0; color: var(--muted); font-size: 15px; }
+.tabs { display: flex; gap: 6px; background: var(--panel); padding: 5px; border-radius: 14px; border: 1px solid var(--line); }
+.tabs a { text-decoration: none; color: var(--muted); font-weight: 800; padding: 9px 16px; border-radius: 10px; font-size: 15px; }
+.tabs a[aria-current="page"] { background: var(--green); color: #fff; }
+.tabs a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+.view { display: none; flex-direction: column; gap: 16px; }
+.view.active { display: flex; }
+.intro { margin: 0; color: var(--muted); max-width: 70ch; }
+
+.vgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; }
+@media (max-width: 680px) { .vgrid { grid-template-columns: 1fr; } }
+.axis { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; font-weight: 800; color: var(--muted); }
+.seg { border: 2px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 4px 12px; font-weight: 800; font-size: 13px; cursor: pointer; }
+.seg[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); }
+.chart.grow { flex: 1 1 0; min-height: 200px; height: auto; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel h2 { font-size: 20px; }
+.panel h3 { font-size: 16px; }
+
+/* Mikroskop */
+.scope { position: relative; background: var(--scope); border-radius: 16px; overflow: hidden; aspect-ratio: 1 / 1; max-height: 52vh; width: 100%; align-self: center; }
+@media (orientation: portrait) { .scope { max-height: 40vh; } }
+.scope canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.badge { position: absolute; left: 12px; top: 12px; background: rgba(255,255,255,0.92); color: var(--ink); border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 800; }
+.badge.right { left: auto; right: 12px; }
+.badge.eye { top: auto; bottom: 12px; left: auto; right: 12px; max-width: calc(100% - 140px); background: var(--orange); color: #fff; }
+.hidden { display: none !important; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 0; border-radius: 12px; padding: 10px 16px; font-weight: 800; cursor: pointer; background: var(--green); color: #fff; }
+.btn:hover { filter: brightness(1.08); }
+.btn.alt { background: var(--blue-soft); color: var(--blue); }
+.btn.warn { background: var(--orange-soft); color: #A6400A; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.speed { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; font-weight: 700; margin-left: auto; }
+.speed input { width: 110px; accent-color: var(--green); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 2px solid var(--line); background: var(--panel); border-radius: 12px; padding: 8px 12px; cursor: pointer; text-align: left; font-weight: 700; color: var(--ink); }
+.chip small { display: block; font-weight: 600; color: var(--muted); font-size: 13px; }
+.chip[aria-pressed="true"] { border-color: var(--green); background: var(--green-soft); }
+
+.big { display: flex; flex-direction: column; gap: 2px; }
+.big .label { font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.big .num { font-family: var(--font-display); font-size: clamp(34px, 5vw, 52px); color: var(--ink); font-variant-numeric: tabular-nums; line-height: 1.05; }
+.pop { display: inline-block; margin-left: 10px; font-size: 22px; color: var(--orange); font-family: var(--font-display); opacity: 0; transform: translateY(6px); transition: opacity .25s, transform .25s; }
+.pop.show { opacity: 1; transform: none; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat { background: var(--bg); border-radius: 12px; padding: 10px 12px; }
+.stat .k { font-size: 13px; color: var(--muted); font-weight: 700; }
+.stat .v { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.meter { display: flex; flex-direction: column; gap: 6px; }
+.meter .track { height: 14px; border-radius: 999px; background: var(--bg); overflow: hidden; border: 1px solid var(--line); }
+.meter .fill { height: 100%; width: 0; background: var(--blue); border-radius: 999px; transition: width .3s, background .3s; }
+.meter .row { display: flex; justify-content: space-between; font-size: 14px; font-weight: 700; color: var(--muted); }
+.alert { background: var(--orange); color: #fff; border-radius: 12px; padding: 10px 14px; font-weight: 800; }
+
+.guess { display: flex; flex-direction: column; gap: 6px; background: var(--blue-soft); border-radius: 12px; padding: 12px; }
+.guess label { font-weight: 800; color: var(--blue); font-size: 14px; }
+.guess .in { display: flex; gap: 8px; }
+.guess input { flex: 1; min-width: 0; border: 2px solid #BFD8F3; border-radius: 10px; padding: 8px 10px; }
+.guess .res { font-weight: 700; font-size: 15px; }
+
+.chart { width: 100%; height: 260px; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); font-weight: 700; }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+.legend span.dash::before { background: repeating-linear-gradient(90deg, var(--c) 0 5px, transparent 5px 8px); }
+
+/* Phasen */
+.dish { position: relative; aspect-ratio: 1 / 1; max-height: 340px; align-self: center; width: 100%; }
+.dish canvas { width: 100%; height: 100%; display: block; }
+.phase-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 560px) { .phase-steps { grid-template-columns: 1fr 1fr; } }
+.pstep { border-radius: 12px; padding: 8px 10px; background: var(--bg); border: 2px solid transparent; font-weight: 800; font-size: 14px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.pstep b { flex: none; width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 2px solid var(--orange); color: var(--orange); display: grid; place-items: center; font-size: 14px; }
+.pstep.on { background: var(--blue-soft); border-color: var(--blue); color: var(--ink); }
+.pstep.done { color: var(--ink); }
+.explain { background: var(--blue-soft); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
+.explain h3 { color: var(--blue); font-size: 20px; }
+.explain p { margin: 0; }
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.bar .row { display: flex; justify-content: space-between; font-size: 14px; font-weight: 800; }
+.bar .track { height: 16px; border-radius: 999px; background: var(--bg); overflow: hidden; border: 1px solid var(--line); }
+.bar .fill { height: 100%; border-radius: 999px; }
+.bar.nut .fill { background: #E9B92F; }
+.bar.waste .fill { background: #D2453B; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.clock { font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .pop, .meter .fill { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <canvas id="logo" width="128" height="80" aria-hidden="true"></canvas>
+      <div>
+        <h1>Bakterien-Labor</h1>
+        <p>Vermehrung bei Bakterien · Biologie Klasse 8</p>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Bereiche">
+      <a href="#verdopplung" id="tab-verdopplung">1 · Verdopplung</a>
+      <a href="#phasen" id="tab-phasen">2 · Wachstumsphasen</a>
+    </nav>
+  </header>
+
+  <!-- ================= VERDOPPLUNG ================= -->
+  <section class="view" id="view-verdopplung" aria-labelledby="h-verd">
+    <h2 id="h-verd" class="hidden">Verdopplung</h2>
+    <p class="intro">Ein einziges Bakterium unter idealen Bedingungen: Es teilt sich alle 20 Minuten durch Zellteilung in zwei Tochterzellen. Gib zuerst deinen Tipp ab, dann starte die Zeit.</p>
+    <div class="vgrid">
+      <div class="panel">
+        <div class="scope" id="scope">
+          <canvas id="cv-scope"></canvas>
+        </div>
+        <div class="controls">
+          <button class="btn" id="v-play">▶ Start</button>
+          <button class="btn alt" id="v-step">+1 Teilung</button>
+          <button class="btn alt" id="v-reset">↺ Neu</button>
+          <label class="speed" for="v-speed">Tempo <input type="range" id="v-speed" min="0.4" max="3" step="0.1" value="1"></label>
+        </div>
+        <div class="guess">
+          <label for="v-guess" id="v-guess-l">Dein Tipp: Wie viele Bakterien sind es nach 8 Stunden?</label>
+          <div class="in"><input id="v-guess" inputmode="numeric" placeholder="z. B. 5000"><button class="btn alt" id="v-guess-b">Merken</button></div>
+          <div class="res" id="v-guess-r" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="big">
+          <span class="label">Anzahl Bakterien</span>
+          <div><span class="num" id="v-count">1</span><span class="pop" id="v-pop">× 2</span></div>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="k">Vergangene Zeit</div><div class="v" id="v-clock">0 Std. 00 Min.</div></div>
+          <div class="stat"><div class="k">Teilungen</div><div class="v" id="v-doubl">0</div></div>
+          <div class="stat"><div class="k">Hintereinander gelegt</div><div class="v" id="v-len">2 µm</div></div>
+          <div class="stat"><div class="k">Kolonie-Durchmesser</div><div class="v" id="v-dia">4 µm</div></div>
+        </div>
+        <div class="axis" role="group" aria-label="Skalierung der y-Achse"><span>y-Achse:</span><button class="seg" id="ax-fix" aria-pressed="true">fest bis 8 Stunden</button><button class="seg" id="ax-auto" aria-pressed="false">wächst mit</button></div>
+        <canvas class="chart grow" id="cv-vchart" role="img" aria-label="Diagramm der Bakterienzahl über die Zeit"></canvas>
+        <div class="alert hidden" id="v-alert"></div>
+        <p class="note">Modell: Verdopplung alle 20 Minuten. Ein Bakterium ist hier 2 µm lang (1 µm = 1/1000 mm).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= PHASEN ================= -->
+  <section class="view" id="view-phasen" aria-labelledby="h-ph">
+    <h2 id="h-ph" class="hidden">Wachstumsphasen</h2>
+    <p class="intro">Bakterien in einer Nährlösung, die niemand nachfüllt: Beobachte, wie sich Nährstoffe und Stoffwechselprodukte verändern und welche Phase gerade abläuft. Die Nummern passen zu Aufgabe 4 auf dem Arbeitsblatt.</p>
+    <div class="phase-steps" id="p-steps">
+      <div class="pstep" data-p="0"><b>1</b>Anlaufphase</div>
+      <div class="pstep" data-p="1"><b>2</b>Beschleunigungsphase</div>
+      <div class="pstep" data-p="2"><b>3</b>Stationäre Phase</div>
+      <div class="pstep" data-p="3"><b>4</b>Absterbephase</div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <h2>Wachstumskurve</h2>
+          <span class="clock" id="p-clock">nach 0 Std.</span>
+        </div>
+        <canvas class="chart" id="cv-pchart" style="height:300px" role="img" aria-label="Wachstumskurve mit Phasen"></canvas>
+        <div class="legend"><span style="--c: var(--blue)">lebende Bakterien</span><span class="dash" style="--c: #7A8A90">theoretisches Wachstum</span></div>
+        <div class="bars">
+          <div class="bar nut"><div class="row"><span>Nährstoffe</span><span id="p-nut-v">100 %</span></div><div class="track"><div class="fill" id="p-nut"></div></div></div>
+          <div class="bar waste"><div class="row"><span>Stoffwechselprodukte (giftig)</span><span id="p-waste-v">0 %</span></div><div class="track"><div class="fill" id="p-waste"></div></div></div>
+        </div>
+        <div class="controls">
+          <button class="btn" id="p-play">▶ Start</button>
+          <button class="btn alt" id="p-reset">↺ Neu ansetzen</button>
+          <label class="speed" for="p-speed">Tempo <input type="range" id="p-speed" min="0.3" max="3" step="0.1" value="1"></label>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Blick in die Nährlösung</h2>
+        <div class="dish"><canvas id="cv-dish" role="img" aria-label="Nährlösung mit lebenden und abgestorbenen Bakterien"></canvas></div>
+        <div class="legend"><span style="--c: #2F8F44">lebende Bakterien</span><span style="--c: #9AA3A6">abgestorbene Bakterien</span></div>
+        <div class="explain" aria-live="polite">
+          <h3 id="p-title">Bereit zum Start</h3>
+          <p id="p-text">Wir setzen wenige Bakterien in eine frische Nährlösung. Drücke auf Start.</p>
+        </div>
+        <div class="controls">
+          <button class="btn warn" id="p-food">+ Nährstoffe nachfüllen</button>
+          <button class="btn warn" id="p-clean">Giftstoffe entfernen</button>
+        </div>
+        <p class="note">Experiment: Was passiert, wenn du in der stationären Phase oder in der Absterbephase Nährstoffe nachfüllst?</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const fmt = (n) => Math.round(n).toLocaleString("de-DE");
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const DPR = Math.min(2, window.devicePixelRatio || 1);
+
+  function fit(cv) {
+    const r = cv.getBoundingClientRect();
+    const w = Math.max(10, Math.round(r.width * DPR)), h = Math.max(10, Math.round(r.height * DPR));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    return { w, h };
+  }
+  function capsule(ctx, x, y, len, wid, ang) {
+    const r = wid / 2, half = Math.max(0, len / 2 - r);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(-half, -r); ctx.lineTo(half, -r); ctx.arc(half, 0, r, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(-half, r); ctx.arc(-half, 0, r, Math.PI / 2, Math.PI * 1.5); ctx.closePath();
+    ctx.restore();
+  }
+
+  // ---------- Logo ----------
+  (function logo() {
+    const cv = $("logo"), c = cv.getContext("2d");
+    const draw = (x, y, a, col, out) => {
+      c.fillStyle = col; c.strokeStyle = out; c.lineWidth = 3;
+      capsule(c, x, y, 52, 30, a); c.fill(); c.stroke();
+      c.save(); c.translate(x, y); c.rotate(a);
+      [[-7, -3], [7, -3]].forEach(([ex, ey]) => { c.fillStyle = "#fff"; c.beginPath(); c.arc(ex, ey, 5, 0, 7); c.fill(); c.fillStyle = "#1F2A2E"; c.beginPath(); c.arc(ex + 1, ey + 1, 2.6, 0, 7); c.fill(); });
+      c.strokeStyle = "#1F2A2E"; c.lineWidth = 2; c.beginPath(); c.arc(0, 4, 5, 0.2, Math.PI - 0.2); c.stroke();
+      c.restore();
+    };
+    draw(34, 42, -0.15, "#7CC56A", "#2F7A3B");
+    draw(92, 40, 0.18, "#7CC56A", "#2F7A3B");
+  })();
+
+  // ---------- Routing ----------
+  const views = ["verdopplung", "phasen"];
+  function route() {
+    const h = (location.hash || "").slice(1);
+    const v = views.includes(h) ? h : "verdopplung";
+    views.forEach((n) => {
+      $("view-" + n).classList.toggle("active", n === v);
+      const t = $("tab-" + n);
+      if (n === v) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
+    });
+    requestAnimationFrame(() => { V.drawChart(); P.drawAll(); });
+  }
+
+  // =====================================================================
+  // 1 · VERDOPPLUNG
+  // =====================================================================
+  const SCEN = {
+    buch:  { start: 1,   dt: 20,  clock: null,   tEnd: 480, limit: null, guess: "Dein Tipp: Wie viele Bakterien sind es nach 8 Stunden?" },
+  };
+  const MAXU = 2048, CELL = 2.0, GOLD = Math.PI * (3 - Math.sqrt(5));
+
+  const V = {
+    sc: "buch", count: 1, t: 0, n: 0, k: 1, ang: [], running: false,
+    anim: null, pause: 0, cam: 30, history: [], guess: null, eyeShown: false,
+
+    reset(sc) {
+      if (sc) this.sc = sc;
+      const S = SCEN[this.sc];
+      this.count = S.start; this.t = 0; this.k = 1; this.n = S.start; this.anim = null; this.pause = 0;
+      this.ang = Array.from({ length: this.n }, () => Math.random() * Math.PI);
+      this.history = [{ t: 0, c: this.count }];
+      this.running = false; this.eyeShown = false;
+      this.cam = this.targetCam(this.n);
+      $("v-guess-l").textContent = S.guess;
+      $("v-guess-r").textContent = this.guess != null ? "Dein Tipp: " + fmt(this.guess) : "";
+      this.ui(); this.drawChart();
+    },
+    spacing() { return 1.05 * Math.sqrt(this.k); },
+    pos(i) { const r = this.spacing() * Math.sqrt(i + 0.5), a = i * GOLD; return [r * Math.cos(a), r * Math.sin(a)]; },
+    targetCam(n) {
+      const cv = $("cv-scope"); const R = Math.min(cv.width || 600, cv.height || 450) * 0.42;
+      return Math.min(34 * DPR, R / (this.spacing() * Math.sqrt(n + 1) + CELL));
+    },
+    finished() { const S = SCEN[this.sc]; return this.t + S.dt > S.tEnd; },
+    beginDoubling() {
+      if (this.finished()) { this.running = false; this.ui(); return false; }
+      const kids = Array.from({ length: this.n }, (_, i) => this.ang[i] + (Math.random() - 0.5) * 1.2);
+      this.anim = { p: 0, kids };
+      return true;
+    },
+    endDoubling() {
+      const S = SCEN[this.sc];
+      this.ang = this.ang.concat(this.anim.kids);
+      this.n *= 2; this.count *= 2; this.t += S.dt; this.anim = null;
+      if (this.n > MAXU) { this.n /= 2; this.k *= 2; this.ang.length = this.n; }
+      this.history.push({ t: this.t, c: this.count });
+      const pop = $("v-pop"); pop.classList.add("show"); setTimeout(() => pop.classList.remove("show"), 500);
+      if (this.finished()) this.running = false;
+      this.ui(); this.drawChart();
+    },
+    ui() {
+      const S = SCEN[this.sc];
+      $("v-count").textContent = fmt(this.count);
+      const d = Math.round(this.t / S.dt);
+      $("v-doubl").textContent = d;
+      if (S.clock != null) {
+        const m = S.clock + this.t;
+        $("v-clock").textContent = Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0");
+      } else {
+        $("v-clock").textContent = Math.floor(this.t / 60) + " Std. " + String(this.t % 60).padStart(2, "0") + " Min.";
+      }
+      $("v-len").textContent = lenTxt(this.count * CELL);
+      $("v-dia").textContent = lenTxt(2 * 1.05 * Math.sqrt(this.count) + CELL);
+      if (S.limit && $("v-fill")) {
+        const pct = Math.min(100, (this.count / S.limit) * 100);
+        $("v-fill").style.width = pct + "%";
+        $("v-fill").style.background = this.count >= S.limit ? css("--orange") : css("--blue");
+        $("v-pct").textContent = (this.count / S.limit * 100).toLocaleString("de-DE", { maximumFractionDigits: this.count < S.limit / 10 ? 1 : 0 }) + " %";
+      }
+      const al = $("v-alert");
+      if (S.limit && this.count >= S.limit) {
+        al.classList.remove("hidden");
+        al.textContent = "Krank-Grenze überschritten! " + (this.finished() ? "Um 16:20 Uhr sind es " + fmt(this.count) + " Bakterien – Finger weg vom Wrap!" : "Und die Bakterien teilen sich weiter …");
+      } else if (this.finished() && this.sc === "kuehl") {
+        al.classList.remove("hidden"); al.style.background = css("--green");
+        al.textContent = "Nur " + fmt(this.count) + " Bakterien um 16:20 Uhr – Kühlen bremst die Vermehrung.";
+      } else if (this.finished() && this.sc === "buch") {
+        al.classList.remove("hidden"); al.style.background = css("--green");
+        al.textContent = "Nach 8 Stunden (24 Teilungen): aus 1 Bakterium wurden " + fmt(this.count) + "!";
+      } else { al.classList.add("hidden"); }
+      if (!(S.limit && this.count >= S.limit)) {} else al.style.background = css("--orange");
+      if (this.finished() && this.guess != null) {
+        const f = this.count / this.guess;
+        $("v-guess-r").textContent = "Dein Tipp: " + fmt(this.guess) + " · Ergebnis: " + fmt(this.count) + (f > 1.5 ? " · " + fmt(f) + "-mal so viele wie geschätzt!" : f < 0.67 ? " · nur ein " + fmt(1 / f) + "-tel deines Tipps." : " · Super geschätzt!");
+      }
+      $("v-play").textContent = this.running ? "❚❚ Pause" : (this.finished() ? "✓ Fertig" : "▶ Start");
+      $("v-play").disabled = this.finished() && !this.running;
+      $("v-step").disabled = this.finished() || this.running;
+    },
+    frame(dtSec) {
+      const speed = +$("v-speed").value;
+      const dur = reduce ? 0.15 : 1.1 / speed;
+      if (this.anim) {
+        this.anim.p += dtSec / dur;
+        if (this.anim.p >= 1) { this.endDoubling(); this.pause = reduce ? 0.3 : 0.35 / speed; }
+      } else if (this.running) {
+        this.pause -= dtSec;
+        if (this.pause <= 0) this.beginDoubling();
+      }
+      const tgt = this.targetCam(this.anim ? this.n * 2 : this.n);
+      this.cam += (tgt - this.cam) * Math.min(1, dtSec * 3);
+      this.drawScope();
+    },
+    drawScope() {
+      const cv = $("cv-scope"); const { w, h } = fit(cv); const c = cv.getContext("2d");
+      c.fillStyle = "#0F1A17"; c.fillRect(0, 0, w, h);
+      const g = c.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.7);
+      g.addColorStop(0, "rgba(246,216,107,0.20)"); g.addColorStop(1, "rgba(246,216,107,0)");
+      c.fillStyle = g; c.fillRect(0, 0, w, h);
+      const s = this.cam, cx = w / 2, cy = h / 2;
+      const len = CELL * Math.sqrt(this.k) * 0.85 * s, wid = Math.max(1.2 * DPR, len * 0.42);
+      const L = Math.max(1.5 * DPR, len);
+      const fill = "#86D27A", edge = "#2F7A3B";
+      c.lineWidth = Math.max(0.6, L / 22);
+      const one = (x, y, a, l) => { capsule(c, cx + x * s, cy + y * s, l, wid, a); c.fillStyle = fill; c.fill(); if (L > 8) { c.strokeStyle = edge; c.stroke(); } };
+      const A = this.anim;
+      for (let i = 0; i < this.n; i++) {
+        const [x, y] = this.pos(i), a = this.ang[i];
+        if (!A) { one(x, y, a, L); continue; }
+        const p = A.p;
+        if (p < 0.45) {
+          // Zelle wächst und schnürt sich ein
+          const q = p / 0.45, off = q * 0.5 * CELL * Math.sqrt(this.k) * 0.5;
+          const ca = Math.cos(a), sa = Math.sin(a);
+          one(x - ca * off, y - sa * off, a, L * (1 - 0.05 * q));
+          one(x + ca * off, y + sa * off, a, L * (1 - 0.05 * q));
+        } else {
+          const q = (p - 0.45) / 0.55, e = q * q * (3 - 2 * q);
+          const [tx, ty] = this.pos(this.n + i);
+          const ca = Math.cos(a), sa = Math.sin(a), off = 0.25 * CELL * Math.sqrt(this.k) * (1 - e);
+          one(x - ca * off, y - sa * off, a, L);
+          const ka = a + (A.kids[i] - a) * e;
+          one(x + ca * off + (tx - x) * e, y + sa * off + (ty - y) * e, ka, L);
+        }
+      }
+    },
+    drawChart() {
+      const cv = $("cv-vchart"); if (!cv.offsetParent) return;
+      const { w, h } = fit(cv); const c = cv.getContext("2d"); c.clearRect(0, 0, w, h);
+      const S = SCEN[this.sc];
+      const steps = Math.floor(S.tEnd / S.dt);
+      const yMax = this.autoY ? Math.max(4, this.count * 1.15) : Math.max(S.start * Math.pow(2, steps), S.limit || 0) * 1.08;
+      const L = 74 * DPR, R = 16 * DPR, T = 14 * DPR, B = 34 * DPR;
+      const X = (t) => L + (t / S.tEnd) * (w - L - R), Y = (v) => h - B - (v / yMax) * (h - T - B);
+      c.font = `${12 * DPR}px Nunito, sans-serif`; c.fillStyle = css("--muted"); c.strokeStyle = css("--line"); c.lineWidth = 1 * DPR;
+      const tick = niceStep(yMax / 4);
+      c.textAlign = "right"; c.textBaseline = "middle";
+      for (let v = 0; v <= yMax + 1e-9; v += tick) { c.beginPath(); c.moveTo(L, Y(v)); c.lineTo(w - R, Y(v)); c.stroke(); c.fillText(fmt(v), L - 8 * DPR, Y(v)); }
+      c.textAlign = "center"; c.textBaseline = "top";
+      const every = Math.max(1, Math.ceil(steps / 8));
+      for (let i = 0; i <= steps; i += every) {
+        const t = i * S.dt;
+        const lbl = S.clock != null ? Math.floor((S.clock + t) / 60) + ":" + String((S.clock + t) % 60).padStart(2, "0") : (t / 60).toLocaleString("de-DE") + " h";
+        c.fillText(lbl, X(t), h - B + 8 * DPR);
+      }
+      if (S.limit) {
+        c.strokeStyle = css("--orange"); c.lineWidth = 2 * DPR; c.setLineDash([7 * DPR, 5 * DPR]);
+        c.beginPath(); c.moveTo(L, Y(S.limit)); c.lineTo(w - R, Y(S.limit)); c.stroke(); c.setLineDash([]);
+      }
+      const H = this.history; const blue = css("--blue");
+      if (H.length > 1) {
+        c.beginPath(); c.moveTo(X(H[0].t), Y(H[0].c));
+        for (let i = 1; i < H.length; i++) { // glatte Kurve zwischen den Messpunkten
+          const a = H[i - 1], b = H[i];
+          for (let j = 1; j <= 12; j++) { const tt = a.t + (b.t - a.t) * j / 12; c.lineTo(X(tt), Y(a.c * Math.pow(2, (tt - a.t) / S.dt))); }
+        }
+        c.lineTo(X(H[H.length - 1].t), h - B); c.lineTo(X(0), h - B); c.closePath();
+        c.fillStyle = "rgba(43,123,211,0.12)"; c.fill();
+        c.beginPath(); c.moveTo(X(H[0].t), Y(H[0].c));
+        for (let i = 1; i < H.length; i++) { const a = H[i - 1], b = H[i]; for (let j = 1; j <= 12; j++) { const tt = a.t + (b.t - a.t) * j / 12; c.lineTo(X(tt), Y(a.c * Math.pow(2, (tt - a.t) / S.dt))); } }
+        c.strokeStyle = blue; c.lineWidth = 3 * DPR; c.stroke();
+      }
+      H.forEach((p, i) => { c.fillStyle = (S.limit && p.c >= S.limit) ? css("--orange") : blue; c.beginPath(); c.arc(X(p.t), Y(p.c), (i === H.length - 1 ? 6 : 3.5) * DPR, 0, 7); c.fill(); });
+      const last = H[H.length - 1];
+      c.fillStyle = css("--ink"); c.font = `800 ${13 * DPR}px Nunito, sans-serif`; c.textBaseline = "bottom";
+      c.textAlign = X(last.t) > w * 0.75 ? "right" : "left";
+      c.fillText(fmt(last.c), X(last.t) + (c.textAlign === "left" ? 10 : -10) * DPR, Y(last.c) - 6 * DPR);
+    },
+  };
+  function lenTxt(um) {
+    if (um < 1000) return um.toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " µm";
+    if (um < 1e6) return (um / 1000).toLocaleString("de-DE", { maximumFractionDigits: um < 1e4 ? 2 : 1 }) + " mm";
+    return (um / 1e6).toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " m";
+  }
+  function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const f = x / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; }
+
+    $("v-play").addEventListener("click", () => { if (V.finished() && !V.anim) return; V.running = !V.running; if (V.running && !V.anim) V.pause = 0; V.ui(); });
+  $("v-step").addEventListener("click", () => { if (!V.anim && !V.running) V.beginDoubling(); });
+  $("v-reset").addEventListener("click", () => V.reset());
+  const setAx = (auto) => { V.autoY = auto; $("ax-auto").setAttribute("aria-pressed", auto); $("ax-fix").setAttribute("aria-pressed", !auto); V.drawChart(); };
+  $("ax-fix").addEventListener("click", () => setAx(false));
+  $("ax-auto").addEventListener("click", () => setAx(true));
+  $("v-guess-b").addEventListener("click", () => {
+    const n = parseInt(($("v-guess").value || "").replace(/\D/g, ""), 10);
+    if (!n) { $("v-guess-r").textContent = "Bitte eine Zahl eingeben, z. B. 5000."; return; }
+    V.guess = n; $("v-guess-r").textContent = "Dein Tipp: " + fmt(n) + " – jetzt Start drücken!"; V.ui();
+  });
+  $("v-guess").addEventListener("keydown", (e) => { if (e.key === "Enter") $("v-guess-b").click(); });
+
+  // =====================================================================
+  // 2 · PHASEN
+  // =====================================================================
+  const PH = [
+    { t: "1 · Anlaufphase", x: "Die Bakterien passen sich an die neue Nährlösung an. Sie wachsen und stellen sich um, teilen sich aber noch kaum." },
+    { t: "2 · Beschleunigungsphase", x: "Nährstoffe, Wärme und Feuchtigkeit sind reichlich da: Die Bakterien teilen sich ungebremst, ihre Zahl verdoppelt sich immer wieder." },
+    { t: "3 · Stationäre Phase", x: "Die Nährstoffe werden knapp, Stoffwechselprodukte reichern sich an. Es sterben etwa so viele Bakterien ab, wie durch Zellteilung neu hinzukommen. Die Kurve bleibt waagerecht (stationär = stillstehend)." },
+    { t: "4 · Absterbephase", x: "Die Nährstoffe sind aufgebraucht und die giftigen Ausscheidungen des eigenen Stoffwechsels nehmen zu. Es sterben mehr Bakterien ab, als neue entstehen." },
+  ];
+  const TMAX = 26, MUMAX = Math.log(2) / (40 / 60);
+  const P = {
+    s: null, running: false, hist: [], bands: [], phase: -1, started: false, theo: null, dots: [],
+    reset() {
+      this.s = { P: 0.001, N: 1, W: 0, D: 0, a: 0.02, t: 0, mu: 0, d: 0 };
+      this.running = false; this.hist = [{ t: 0, P: this.s.P }]; this.bands = [{ p: 0, t0: 0 }]; this.phase = 0; this.started = false; this.theo = null;
+      if (!this.dots.length) {
+        for (let i = 0; i < 900; i++) { const r = Math.sqrt(Math.random()) * 0.9, a = Math.random() * Math.PI * 2; this.dots.push({ x: r * Math.cos(a), y: r * Math.sin(a), a: Math.random() * Math.PI }); }
+      }
+      $("p-title").textContent = "Bereit zum Start";
+      $("p-text").textContent = "Wir setzen wenige Bakterien in eine frische Nährlösung. Drücke auf Start.";
+      this.updSteps(); this.ui(); this.drawAll();
+    },
+    step(dt) {
+      const s = this.s;
+      const nf = s.N / (s.N + 0.05);
+      s.a += dt * (nf > 0.05 ? 0.45 * (1 - s.a) + 0.02 : -0.03 * s.a); s.a = Math.min(1, Math.max(0, s.a));
+      const mu = MUMAX * Math.pow(s.a, 4) * nf;
+      const tox = Math.max(0, s.W - 1.35);
+      const d = 0.01 + 0.9 * tox * tox / (tox * tox + 0.15);
+      const growth = mu * s.P, death = d * s.P;
+      s.P = Math.max(0, s.P + (growth - death) * dt);
+      s.D += death * dt;
+      s.N = Math.max(0, s.N - growth * dt + 0.75 * death * dt);
+      s.W += growth * dt + 0.05 * s.P * dt;
+      s.mu = mu; s.d = d; s.t += dt;
+    },
+    classify() {
+      const s = this.s, r = s.mu - s.d;
+      if (!this.started) { if (r > 0.2) this.started = true; else return 0; }
+      if (r > 0.2) return 1;
+      if (r > -0.05) return 2;
+      return 3;
+    },
+    frame(dtSec) {
+      if (!this.running) return;
+      const hours = dtSec * 1.1 * +$("p-speed").value;
+      const n = Math.max(1, Math.ceil(hours / 0.01));
+      for (let i = 0; i < n; i++) {
+        this.step(hours / n);
+        const ph = this.classify();
+        if (ph !== this.phase) {
+          if (ph === 2 && !this.theo) this.theo = { t: this.s.t, P: this.s.P };
+          this.phase = ph; this.bands.push({ p: ph, t0: this.s.t }); this.updSteps();
+        }
+      }
+      this.hist.push({ t: this.s.t, P: this.s.P });
+      if (this.s.t >= TMAX) { this.running = false; }
+      this.ui(); this.drawAll();
+    },
+    updSteps() {
+      const seen = new Set(this.bands.map((b) => b.p));
+      document.querySelectorAll(".pstep").forEach((el) => {
+        const p = +el.dataset.p;
+        el.classList.toggle("on", p === this.phase && (this.running || this.s.t > 0));
+        el.classList.toggle("done", seen.has(p));
+      });
+      if (this.s && this.s.t > 0) { $("p-title").textContent = PH[this.phase].t; $("p-text").textContent = PH[this.phase].x; }
+    },
+    ui() {
+      const s = this.s;
+      $("p-clock").textContent = "nach " + Math.floor(s.t) + " Std.";
+      const nut = Math.min(100, s.N * 100), waste = Math.min(100, s.W / 3.2 * 100);
+      $("p-nut").style.width = nut + "%"; $("p-nut-v").textContent = Math.round(nut) + " %";
+      $("p-waste").style.width = waste + "%"; $("p-waste-v").textContent = Math.round(waste) + " %";
+      $("p-play").textContent = this.running ? "❚❚ Pause" : (s.t >= TMAX ? "✓ Fertig" : (s.t > 0 ? "▶ Weiter" : "▶ Start"));
+      $("p-play").disabled = s.t >= TMAX;
+    },
+    drawAll() { if (!$("view-phasen").classList.contains("active")) return; this.drawChart(); this.drawDish(); },
+    drawChart() {
+      const cv = $("cv-pchart"); const { w, h } = fit(cv); const c = cv.getContext("2d"); c.clearRect(0, 0, w, h);
+      const L = 40 * DPR, R = 12 * DPR, T = 30 * DPR, B = 30 * DPR, yMax = 1.2;
+      const X = (t) => L + (t / TMAX) * (w - L - R), Y = (v) => h - B - (v / yMax) * (h - T - B);
+      const fills = ["#D7E9F8", "#BCDCF5", "#9ECDF0", "#7DBDEA"];
+      const names = ["Anlauf", "Beschleunigung", "stationär", "Absterben"];
+      this.bands.forEach((b, i) => {
+        const t1 = i + 1 < this.bands.length ? this.bands[i + 1].t0 : this.s.t;
+        if (t1 <= b.t0) return;
+        c.fillStyle = fills[b.p]; c.fillRect(X(b.t0), T, X(t1) - X(b.t0), h - T - B);
+        if (X(t1) - X(b.t0) > 34 * DPR) {
+          c.fillStyle = "#1F4F80"; c.font = `800 ${11 * DPR}px Nunito, sans-serif`; c.textAlign = "center"; c.textBaseline = "top";
+          const lbl = (b.p + 1) + " " + (X(t1) - X(b.t0) > 90 * DPR ? names[b.p] : "");
+          c.fillText(lbl, (X(b.t0) + X(t1)) / 2, T + 6 * DPR);
+        }
+      });
+      c.strokeStyle = css("--muted"); c.lineWidth = 1.5 * DPR;
+      c.beginPath(); c.moveTo(L, T - 10 * DPR); c.lineTo(L, h - B); c.lineTo(w - R, h - B); c.stroke();
+      c.fillStyle = css("--muted"); c.font = `700 ${12 * DPR}px Nunito, sans-serif`;
+      c.textAlign = "left"; c.textBaseline = "top"; c.fillText("Anzahl lebender Bakterien", L + 6 * DPR, 6 * DPR);
+      c.textAlign = "center"; for (let t = 0; t <= TMAX; t += 4) c.fillText(t + " h", X(t), h - B + 8 * DPR);
+      if (this.theo) {
+        c.setLineDash([6 * DPR, 5 * DPR]); c.strokeStyle = "#7A8A90"; c.lineWidth = 2 * DPR; c.beginPath();
+        for (let t = this.theo.t; t <= TMAX; t += 0.05) { const v = this.theo.P * Math.exp(MUMAX * (t - this.theo.t)); if (v > yMax * 1.02) break; const fn = t === this.theo.t ? "moveTo" : "lineTo"; c[fn](X(t), Y(v)); }
+        c.stroke(); c.setLineDash([]);
+      }
+      const H = this.hist;
+      c.beginPath(); H.forEach((p, i) => c[i ? "lineTo" : "moveTo"](X(p.t), Y(p.P)));
+      c.strokeStyle = css("--blue"); c.lineWidth = 3.5 * DPR; c.lineJoin = "round"; c.stroke();
+      const e = H[H.length - 1]; c.fillStyle = css("--blue"); c.beginPath(); c.arc(X(e.t), Y(e.P), 6 * DPR, 0, 7); c.fill();
+    },
+    drawDish() {
+      const cv = $("cv-dish"); const { w, h } = fit(cv); const c = cv.getContext("2d"); c.clearRect(0, 0, w, h);
+      const s = this.s, cx = w / 2, cy = h / 2, R = Math.min(w, h) * 0.46;
+      const wf = Math.min(1, s.W / 3.2), nf = Math.min(1, s.N);
+      const mix = (a, b, f) => a.map((v, i) => Math.round(v + (b[i] - v) * f));
+      const base = mix([250, 226, 140], [214, 120, 96], wf);
+      const col = mix([236, 236, 230], base, 0.35 + 0.65 * Math.max(nf, wf));
+      c.fillStyle = `rgb(${col.join(",")})`; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.fill();
+      c.lineWidth = 6 * DPR; c.strokeStyle = "#C9D3D6"; c.stroke();
+      c.lineWidth = 2 * DPR; c.strokeStyle = "rgba(255,255,255,0.8)"; c.beginPath(); c.arc(cx, cy, R - 10 * DPR, -2.4, -1.2); c.stroke();
+      const alive = Math.round(Math.min(1, s.P / 1.0) * 700);
+      const dead = Math.min(900 - alive, Math.round(Math.min(1, s.D / 1.2) * 400));
+      const L = R * 0.075, W = L * 0.42;
+      for (let i = 0; i < alive + dead; i++) {
+        const d = this.dots[i], isDead = i >= alive;
+        capsule(c, cx + d.x * R, cy + d.y * R, L, W, d.a);
+        c.fillStyle = isDead ? "#9AA3A6" : "#2F8F44"; c.fill();
+      }
+      if (alive < 3 && s.t < 0.5) {
+        for (let i = 0; i < 3; i++) { const d = this.dots[i]; capsule(c, cx + d.x * R, cy + d.y * R, L, W, d.a); c.fillStyle = "#2F8F44"; c.fill(); }
+      }
+    },
+  };
+  $("p-play").addEventListener("click", () => { if (P.s.t >= TMAX) return; P.running = !P.running; if (P.running && P.s.t === 0) P.updSteps(); P.updSteps(); P.ui(); });
+  $("p-reset").addEventListener("click", () => P.reset());
+  $("p-food").addEventListener("click", () => { P.s.N = Math.min(1.5, P.s.N + 0.8); P.ui(); P.drawAll(); });
+  $("p-clean").addEventListener("click", () => { P.s.W *= 0.2; P.ui(); P.drawAll(); });
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if ($("view-verdopplung").classList.contains("active")) V.frame(dt);
+    if ($("view-phasen").classList.contains("active")) P.frame(dt);
+    requestAnimationFrame(loop);
+  }
+  window.addEventListener("hashchange", route);
+  window.addEventListener("resize", () => { V.drawChart(); P.drawAll(); });
+  P.reset(); V.reset("buch"); route();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
